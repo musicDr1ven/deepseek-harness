@@ -36,7 +36,7 @@ Any operation that changes only the representation of an existing semantic messa
 
 ## Consequences
 
-Every message producer must choose creation or import explicitly, and tests construct complete values rather than partial content/source records. UUID generation moves outward to the first semantic creation point, so deterministic fixtures that provide an existing id use `freezeMessage()` instead of `createMessage()`.
+Every message producer must choose creation or import explicitly, and tests construct complete values rather than partial content/source records. UUID generation moves outward to the first semantic creation point, so deterministic fixtures that provide an existing id use `freezeMessage()` instead of `createMessage()`. `Session.append` enforces the complete message invariants — identity, role, source, and content — so a producer that hands the typed write interface a bare object fails at the append site instead of writing a log the durable reader later refuses.
 
 Live inbox events, durable events, derived history, and model requests can correlate one message without content equality or envelope-specific ids. Pending-input policy and UI attachment cleanup can compare `MessageId` before a turn exists, while claims retain that identity inside the open turn. Deep freezing prevents a producer, hook, or observer from changing the value after identity is established.
 

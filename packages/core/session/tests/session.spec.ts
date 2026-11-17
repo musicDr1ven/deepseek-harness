@@ -648,6 +648,19 @@ describe('Session', () => {
     expect(session.snapshotEvents()).toHaveLength(0)
   })
 
+  it('rejects a message event without an identified message at the source', () => {
+    const session = Session.create(brandString<SessionId>('s5c'))
+    // A JavaScript plugin can hand a bare object to the typed append surface, and
+    // the same event would make the durable log unreadable on the next load.
+    const unidentified = {
+      role: 'user', content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' },
+    }
+    expect(() => session.append('user/message', unidentified as never, { surfaceOp: 'append' }))
+      .toThrow(/session event "user\/message" at seq 0 lacks an identified message: .*createUserMessage\(\)/)
+    // The rejected append never entered the log.
+    expect(session.snapshotEvents()).toHaveLength(0)
+  })
+
   it('rejects a surface-eligible append with no surfaceOp marker (runtime guard for the union-widening loophole)', () => {
     const session = Session.create(brandString<SessionId>('s5b'))
     session.append('turn/start', { turn: 1 })
@@ -664,7 +677,7 @@ describe('Session', () => {
 
   it('accepts dense arrays and nested plain objects', () => {
     const session = Session.create(brandString<SessionId>('s6'))
-    expect(() => session.append('user/message', { content: [{ type: 'text', text: 'x' }], source: { kind: 'user' }, extra: [1, 2, [3, { a: null, b: true }]] } as never, { surfaceOp: 'append' })).not.toThrow()
+    expect(() => session.append('user/message', { id: 'm6', role: 'user', content: [{ type: 'text', text: 'x' }], source: { kind: 'user' }, extra: [1, 2, [3, { a: null, b: true }]] } as never, { surfaceOp: 'append' })).not.toThrow()
     expect(session.snapshotEvents()).toHaveLength(1)
   })
 
@@ -1016,7 +1029,7 @@ describe('Session', () => {
       data: unknown,
       opts?: unknown,
     ) => SessionEvent
-    const data = { content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } }
+    const data = { id: 'surface-shape', role: 'user', content: [{ type: 'text', text: 'hello' }], source: { kind: 'user' } }
 
     expect(() => appendRaw('user/message', data, { surfaceOp: 'invalid' }))
       .toThrow(/invalid surfaceOp/)

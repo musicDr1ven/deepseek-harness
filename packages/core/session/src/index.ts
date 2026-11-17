@@ -170,12 +170,10 @@ function snapshotSessionHeader(id: SessionId, source?: SessionHeader): SessionHe
  * @throws when event-local surface metadata, request-header fields, or message invariants are invalid; history relations are not checked.
  */
 export function adoptSessionEvent<T extends SessionEvent>(event: T): T {
-  validateSessionEventData(event, `session event at seq ${event.seq}`)
+  const subject = `session event "${event.type}" at seq ${event.seq}`
+  validateSessionEventData(event, subject)
   validateSurfaceMetadata(event)
-  assertMessageEventShape(
-    event,
-    `session event at seq ${event.seq}`,
-  )
+  assertMessageEventShape(event, subject)
   switch (event.type) {
     case 'user/message':
       deepFreeze(event.data)
@@ -345,7 +343,7 @@ function assertMessageEventShape(event: Record<string, unknown>, subject: string
   if (typeof message !== 'object' || message === null
     || typeof (message as Record<string, unknown>)['id'] !== 'string'
     || (message as Record<string, unknown>)['id'] === '') {
-    throw new Error(`${subject} lacks an identified message`)
+    throw new Error(`${subject} lacks an identified message: its writer must persist a complete message with a non-empty id (createUserMessage(), createAssistantMessage(), createToolResultMessage(), or createMessage()) instead of a bare object`)
   }
   const messageRecord = message as Record<string, unknown>
   const expectedRole = MESSAGE_ROLE_BY_TYPE[type]
@@ -536,11 +534,15 @@ function snapshotAppend(
   return { type, data: dataSnapshot, surface }
 }
 
-/** Construct and validate one live event from detached inputs. */
+/** Validate one live event from detached inputs. */
 function createAppendEvent(snapshot: ReturnType<typeof snapshotAppend>, seq: SessionSeq): SessionEvent {
   const { type, data, surface } = snapshot
   const event = deepFreeze({ type, seq, time: Date.now(), data, ...surface } as SessionEvent)
-  validateSessionEventData(event, `session event "${type}" at seq ${seq}`)
+  const subject = `session event "${type}" at seq ${seq}`
+  validateSessionEventData(event, subject)
+  // The durable reader validates these invariants on reload; enforcing them here
+  // rejects a bad producer's event before it can make the session unreadable.
+  assertMessageEventShape(event, subject)
   return event
 }
 
@@ -842,7 +844,8 @@ export class Session {
    *   request-header empty-field or tool-error consistency rules, or the
    *   canonical surface contract (marker shape and eligibility, unique
    *   earlier source-event references, positional replacement validity, and complete
-   *   shadowed-node coverage). One iterative pass reads, validates, and
+   *   shadowed-node coverage), or a message event's message lacks the identity,
+   *   role, source, or content the durable reader requires. One iterative pass reads, validates, and
    *   copies each nested value once, so a stateful getter cannot supply one value
    *   to validation and another to storage. The event log is the durable source
    *   of truth, so a bad event fails at the append site rather than later during
